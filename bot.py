@@ -1150,14 +1150,14 @@ def sync_ffmpeg_worker(chat_id, res, input_file, output_file, mode, font, margin
     
     # Tambah Watermark jika enabled
     if WATERMARK_ENABLED:
-        # Escape karakter khusus untuk drawtext (FFmpeg)
-        wm_text = WATERMARK_TEXT.replace("\\", "\\\\").replace("'", "\\'").replace(":", "\\:").replace("(", "\\(").replace(")", "\\)")
+        # Escape karakter khusus untuk drawtext (FFmpeg) - simpler escaping for Linux
+        wm_text = WATERMARK_TEXT.replace("'", "'\\''").replace(":", "\\:").replace("(", "\\(").replace(")", "\\)")
         
         # Dynamic font size based on resolution
         wm_fontsize = {360: 14, 480: 18, 720: 24, 1080: 30}.get(h, 20)
         
         # Fade in/out effect: fade in 0-1s, fade out di detik 28-30
-        alpha_expr = f"if(lt(t,1),t,if(gt(t,{WATERMARK_DURATION-2}),({WATERMARK_DURATION}-t)/2,1))"
+        alpha_expr = f"if(lt(t\\,1)\\,t\\,if(gt(t\\,{WATERMARK_DURATION-2})\\,({WATERMARK_DURATION}-t)/2\\,1))"
         
         # Filter: Arial Bold, kuning dengan outline hitam tipis
         watermark_filter = (
@@ -1170,7 +1170,7 @@ def sync_ffmpeg_worker(chat_id, res, input_file, output_file, mode, font, margin
             f":x=(w-text_w)/2"
             f":y=20"
             f":alpha='{alpha_expr}'"
-            f":enable='lt(t,{WATERMARK_DURATION})'"
+            f":enable='lt(t\\,{WATERMARK_DURATION})'"
         )
         vf = f"{vf},{watermark_filter}"
     
