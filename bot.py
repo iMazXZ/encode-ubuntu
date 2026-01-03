@@ -952,6 +952,68 @@ def get_indo_subtitle_index(filename: str) -> Optional[int]:
         logger.error(f"Error detecting subtitle: {e}")
         return None
 
+def extract_subtitle_with_watermark(input_file: str, sub_track: int, output_srt: str) -> bool:
+    """Extract subtitle from video and prepend watermark line.
+    
+    This is a workaround for missing drawtext filter - we inject watermark 
+    into the subtitle file as the first entry.
+    """
+    try:
+        # Extract subtitle to temp file
+        temp_srt = output_srt + ".tmp"
+        cmd = [
+            "ffmpeg", "-y", "-i", input_file,
+            "-map", f"0:s:{sub_track}",
+            "-c:s", "srt",
+            temp_srt
+        ]
+        subprocess.run(cmd, check=True, capture_output=True, **get_hidden_params())
+        
+        # Read extracted subtitle
+        with open(temp_srt, 'r', encoding='utf-8', errors='ignore') as f:
+            original_content = f.read()
+        
+        # Create watermark entry (shown at top center for first 30 seconds)
+        # {\an8} = top center alignment in ASS/SRT
+        watermark_entry = f"""0
+00:00:00,000 --> 00:00:{WATERMARK_DURATION:02d},000
+{{\\an8}}<font color="#FFFF00">{WATERMARK_TEXT}</font>
+
+"""
+        
+        # Renumber existing entries (shift all numbers by 1)
+        lines = original_content.strip().split('\n')
+        new_lines = []
+        entry_num = 1  # Start from 1 since 0 is watermark
+        
+        i = 0
+        while i < len(lines):
+            line = lines[i].strip()
+            # Check if this is an entry number
+            if line.isdigit():
+                entry_num += 1
+                new_lines.append(str(entry_num))
+            else:
+                new_lines.append(lines[i])
+            i += 1
+        
+        # Write final SRT with watermark at beginning
+        with open(output_srt, 'w', encoding='utf-8') as f:
+            f.write(watermark_entry)
+            f.write('\n'.join(new_lines))
+        
+        # Cleanup temp
+        if os.path.exists(temp_srt):
+            os.remove(temp_srt)
+        
+        logger.info(f"Created subtitle with watermark: {output_srt}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error extracting subtitle with watermark: {e}")
+        return False
+
+
 # =====================================================
 # FILEBROWSER HELPERS
 # =====================================================
@@ -1130,7 +1192,6 @@ def sync_ffmpeg_worker(chat_id, res, input_file, output_file, mode, font, margin
         a_opts = ["-c:a", "aac", "-ac", "2", "-b:a", AACLCAUDIO_MAP.get(res, "128k")]
     
     # 2. Filter Subtitle - escape commas in force_style value
-    # Note: colons between options should NOT be escaped, only within values
     style_escaped = f"FontName={SUB_FONT_NAME}\\,FontSize={font}\\,Bold={SUB_IS_BOLD}\\,MarginV={margin}\\,BorderStyle=1\\,Outline=1\\,PrimaryColour=&H00FFFFFF"
     
     if res == "360p": h=360; b="300k"
@@ -1138,44 +1199,36 @@ def sync_ffmpeg_worker(chat_id, res, input_file, output_file, mode, font, margin
     elif res == "720p": h=720; b="850k"
     else: h=1080; b="2100k"
     
-    # Update VF with correct height
-    # Escape colons WITHIN the path (if any), but NOT between options
+    # 3. Handle subtitle with optional watermark injection
+    temp_srt_with_watermark = None
+    
     if srt_file:
+        # External SRT provided - use directly
         sub_path = srt_file.replace("\\", "/").replace(":", "\\\\:")
         vf = f"scale=-2:{h},subtitles={sub_path}:force_style={style_escaped}"
     elif sub_track is not None:
-        clean_input = input_file.replace("\\", "/").replace(":", "\\\\:")
-        vf = f"scale=-2:{h},subtitles={clean_input}:si={sub_track}:force_style={style_escaped}"
+        # Embedded subtitle - check if watermark enabled
+        if WATERMARK_ENABLED:
+            # Extract subtitle and inject watermark
+            temp_srt_with_watermark = os.path.join(CACHE_FOLDER, f"sub_wm_{chat_id}_{res}.srt")
+            if extract_subtitle_with_watermark(input_file, sub_track, temp_srt_with_watermark):
+                sub_path = temp_srt_with_watermark.replace("\\", "/").replace(":", "\\\\:")
+                vf = f"scale=-2:{h},subtitles={sub_path}:force_style={style_escaped}"
+                logger.info(f"Using subtitle with injected watermark: {temp_srt_with_watermark}")
+            else:
+                # Fallback to original subtitle without watermark
+                clean_input = input_file.replace("\\", "/").replace(":", "\\\\:")
+                vf = f"scale=-2:{h},subtitles={clean_input}:si={sub_track}:force_style={style_escaped}"
+                logger.warning("Failed to inject watermark, using original subtitle")
+        else:
+            # Watermark disabled - use embedded subtitle directly
+            clean_input = input_file.replace("\\", "/").replace(":", "\\\\:")
+            vf = f"scale=-2:{h},subtitles={clean_input}:si={sub_track}:force_style={style_escaped}"
     else:
-        # Tidak ada subtitle - skip filter subtitle (scale only)
+        # No subtitle - scale only
         vf = f"scale=-2:{h}"
     
-    # Tambah Watermark jika enabled
-    if WATERMARK_ENABLED:
-        # Escape karakter khusus untuk drawtext (FFmpeg) - simpler escaping for Linux
-        wm_text = WATERMARK_TEXT.replace("'", "'\\''").replace(":", "\\:").replace("(", "\\(").replace(")", "\\)")
-        
-        # Dynamic font size based on resolution
-        wm_fontsize = {360: 14, 480: 18, 720: 24, 1080: 30}.get(h, 20)
-        
-        # Fade in/out effect: fade in 0-1s, fade out di detik 28-30
-        alpha_expr = f"if(lt(t\\,1)\\,t\\,if(gt(t\\,{WATERMARK_DURATION-2})\\,({WATERMARK_DURATION}-t)/2\\,1))"
-        
-        # Filter: Arial Bold, kuning dengan outline hitam tipis
-        watermark_filter = (
-            f"drawtext=text='{wm_text}'"
-            f":fontfile='{WATERMARK_FONT}'"
-            f":fontsize={wm_fontsize}"
-            f":fontcolor=yellow"
-            f":borderw=1"
-            f":bordercolor=black"
-            f":x=(w-text_w)/2"
-            f":y=20"
-            f":alpha='{alpha_expr}'"
-            f":enable='lt(t\\,{WATERMARK_DURATION})'"
-        )
-        vf = f"{vf},{watermark_filter}"
-    
+
     # 3. Encoding Logic
     is_2pass = (mode == "2pass") or (mode == "mixed" and res == "360p")
     
