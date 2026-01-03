@@ -1,0 +1,37 @@
+# Credentials
+.env
+
+# Data folders (auto-created)
+data/
+raw_cache/
+output/
+manual/
+tools/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+
+# Pyrogram session
+*.session
+*.session-journal
+
+# Logs
+*.log
+bot_log.txt
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo

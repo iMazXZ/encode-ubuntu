@@ -1,0 +1,5 @@
+pyrofork>=2.3.0
+tgcrypto
+requests
+psutil
+python-dotenv
