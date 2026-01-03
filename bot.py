@@ -967,7 +967,16 @@ def extract_subtitle_with_watermark(input_file: str, sub_track: int, output_srt:
             "-c:s", "srt",
             temp_srt
         ]
-        subprocess.run(cmd, check=True, capture_output=True, **get_hidden_params())
+        logger.info(f"Extracting subtitle: {' '.join(cmd)}")
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        
+        if result.returncode != 0:
+            logger.error(f"FFmpeg extract failed: {result.stderr[-500:]}")
+            return False
+        
+        if not os.path.exists(temp_srt):
+            logger.error(f"Temp SRT not created: {temp_srt}")
+            return False
         
         # Read extracted subtitle
         with open(temp_srt, 'r', encoding='utf-8', errors='ignore') as f:
@@ -975,7 +984,7 @@ def extract_subtitle_with_watermark(input_file: str, sub_track: int, output_srt:
         
         # Create watermark entry (shown at top center for first 30 seconds)
         # {\an8} = top center alignment in ASS/SRT
-        watermark_entry = f"""0
+        watermark_entry = f"""1
 00:00:00,000 --> 00:00:{WATERMARK_DURATION:02d},000
 {{\\an8}}<font color="#FFFF00">{WATERMARK_TEXT}</font>
 
@@ -984,7 +993,7 @@ def extract_subtitle_with_watermark(input_file: str, sub_track: int, output_srt:
         # Renumber existing entries (shift all numbers by 1)
         lines = original_content.strip().split('\n')
         new_lines = []
-        entry_num = 1  # Start from 1 since 0 is watermark
+        entry_num = 1  # Start from 1, watermark is entry 1
         
         i = 0
         while i < len(lines):
