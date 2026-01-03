@@ -1129,8 +1129,8 @@ def sync_ffmpeg_worker(chat_id, res, input_file, output_file, mode, font, margin
     else:
         a_opts = ["-c:a", "aac", "-ac", "2", "-b:a", AACLCAUDIO_MAP.get(res, "128k")]
     
-    # 2. Filter Subtitle
-    style = f"force_style='FontName={SUB_FONT_NAME},FontSize={font},Bold={SUB_IS_BOLD},MarginV={margin},BorderStyle=1,Outline=1,PrimaryColour=&H00FFFFFF'"
+    # 2. Filter Subtitle - escape commas for FFmpeg filter
+    style_params = f"FontName={SUB_FONT_NAME}\\,FontSize={font}\\,Bold={SUB_IS_BOLD}\\,MarginV={margin}\\,BorderStyle=1\\,Outline=1\\,PrimaryColour=&H00FFFFFF"
     
     if res == "360p": h=360; b="300k"
     elif res == "480p": h=480; b="540k"
@@ -1139,11 +1139,11 @@ def sync_ffmpeg_worker(chat_id, res, input_file, output_file, mode, font, margin
     
     # Update VF with correct height
     if srt_file:
-        sub_path = srt_file.replace("\\", "/").replace(":", "\\:")
-        vf = f"scale=-2:{h},subtitles='{sub_path}':{style}"
+        sub_path = srt_file.replace("\\", "/").replace(":", "\\:").replace("'", "\\'")
+        vf = f"scale=-2:{h},subtitles={sub_path}:force_style={style_params}"
     elif sub_track is not None:
-        clean_input = input_file.replace("\\", "/").replace(":", "\\:")
-        vf = f"scale=-2:{h},subtitles='{clean_input}':si={sub_track}:{style}"
+        clean_input = input_file.replace("\\", "/").replace(":", "\\:").replace("'", "\\'")
+        vf = f"scale=-2:{h},subtitles={clean_input}:si={sub_track}:force_style={style_params}"
     else:
         # Tidak ada subtitle - skip filter subtitle (scale only)
         vf = f"scale=-2:{h}"
