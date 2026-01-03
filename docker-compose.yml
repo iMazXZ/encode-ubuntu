@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  encodebot:
+    build: .
+    image: encodebot:latest
+    container_name: encodebot
+    restart: unless-stopped
+
+    volumes:
+      # Persistent data
+      - ./data:/app/data
+      - ./raw_cache:/app/raw_cache
+      - ./output:/app/output
+      - ./manual:/app/manual
+
+      # Config files (create these before running)
+      - ./.env:/app/.env:ro
+      - ~/.config/rclone:/root/.config/rclone:ro
+    # Optional: limit resources
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: '4'
+    #       memory: 8G
