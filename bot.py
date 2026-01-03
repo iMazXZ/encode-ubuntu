@@ -1129,22 +1129,23 @@ def sync_ffmpeg_worker(chat_id, res, input_file, output_file, mode, font, margin
     else:
         a_opts = ["-c:a", "aac", "-ac", "2", "-b:a", AACLCAUDIO_MAP.get(res, "128k")]
     
-    # 2. Filter Subtitle - escape special chars properly for Linux FFmpeg
-    # Commas must be escaped in force_style when not quoted
-    style_escaped = f"FontName={SUB_FONT_NAME}\\,FontSize={font}\\,Bold={SUB_IS_BOLD}\\,MarginV={margin}\\,BorderStyle=1\\,Outline=1\\,PrimaryColour=\\&H00FFFFFF"
+    # 2. Filter Subtitle - escape commas in force_style value
+    # Note: colons between options should NOT be escaped, only within values
+    style_escaped = f"FontName={SUB_FONT_NAME}\\,FontSize={font}\\,Bold={SUB_IS_BOLD}\\,MarginV={margin}\\,BorderStyle=1\\,Outline=1\\,PrimaryColour=&H00FFFFFF"
     
     if res == "360p": h=360; b="300k"
     elif res == "480p": h=480; b="540k"
     elif res == "720p": h=720; b="850k"
     else: h=1080; b="2100k"
     
-    # Update VF with correct height - no quotes, escape colons and commas
+    # Update VF with correct height
+    # Escape colons WITHIN the path (if any), but NOT between options
     if srt_file:
-        sub_path = srt_file.replace("\\", "/").replace(":", "\\\\:").replace("'", "")
-        vf = f"scale=-2:{h},subtitles={sub_path}\\:force_style={style_escaped}"
+        sub_path = srt_file.replace("\\", "/").replace(":", "\\\\:")
+        vf = f"scale=-2:{h},subtitles={sub_path}:force_style={style_escaped}"
     elif sub_track is not None:
-        clean_input = input_file.replace("\\", "/").replace(":", "\\\\:").replace("'", "")
-        vf = f"scale=-2:{h},subtitles={clean_input}\\:si={sub_track}\\:force_style={style_escaped}"
+        clean_input = input_file.replace("\\", "/").replace(":", "\\\\:")
+        vf = f"scale=-2:{h},subtitles={clean_input}:si={sub_track}:force_style={style_escaped}"
     else:
         # Tidak ada subtitle - skip filter subtitle (scale only)
         vf = f"scale=-2:{h}"
